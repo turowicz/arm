@@ -1,1 +1,3 @@
-# arm
+# ARM
+
+Scripts for managing Service Fabric clusters.
