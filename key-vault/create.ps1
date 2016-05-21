@@ -14,4 +14,4 @@ New-AzureRmKeyVault -VaultName $name -ResourceGroupName $group -Location $locati
 
 Set-AzureRmKeyVaultAccessPolicy -VaultName $name -ResourceGroupName $group -EnabledForDeployment
 
-Set-AzureRmKeyVaultAccessPolicy -VaultName fabric-vault -ResourceGroupName fabric -UserPrincipalName $user -PermissionsToKeys all -PermissionsToSecrets all
+Set-AzureRmKeyVaultAccessPolicy -VaultName $name -ResourceGroupName $group -UserPrincipalName $user -PermissionsToKeys all -PermissionsToSecrets all

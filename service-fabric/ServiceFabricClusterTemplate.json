@@ -138,6 +138,20 @@
         "description": "Input endpoint2 for the application to use. Replace it with what your application uses"
       }
     },
+    "loadBalancedAppPort3": {
+      "type": "int",
+      "defaultValue": 8080,
+      "metadata": {
+        "description": "Input endpoint3 for the application to use. Replace it with what your application uses"
+      }
+    },
+    "loadBalancedAppPort4": {
+      "type": "int",
+      "defaultValue": 8433,
+      "metadata": {
+        "description": "Input endpoint4 for the application to use. Replace it with what your application uses"
+      }
+    },
     "certificateStoreValue": {
       "type": "string",
       "allowedValues": [
@@ -207,13 +221,31 @@
         "description": "Name for the storage account that contains support logs from the cluster"
       }
     },
+    "applicationDiagnosticsStorageAccountType": {
+      "type": "string",
+      "allowedValues": [
+        "Standard_LRS",
+        "Standard_GRS"
+      ],
+      "defaultValue": "Standard_LRS",
+      "metadata": {
+        "description": "Replication option for the application diagnostics storage account"
+      }
+    },
+    "applicationDiagnosticsStorageAccountName": {
+      "type": "string",
+      "defaultValue": "[toLower(concat(uniqueString(resourceGroup().id), '3' ))]",
+      "metadata": {
+        "description": "Name for the storage account that contains application diagnostics data from the cluster"
+      }
+    },
     "vmNodeType0Name": {
       "type": "string",
-      "defaultValue": "DEV"
+      "defaultValue": "NODE"
     },
     "vmNodeType0Size": {
       "type": "string",
-      "defaultValue": "Standard_A1"
+      "defaultValue": "Standard_A0"
     }
   },
   "variables": {
@@ -252,6 +284,19 @@
       "location": "[parameters('computeLocation')]",
       "properties": {
         "accountType": "[parameters('supportLogStorageAccountType')]"
+      },
+      "tags": {
+        "resourceType": "Service Fabric",
+        "clusterName": "[parameters('clusterName')]"
+      }
+    },
+    {
+      "apiVersion": "[variables('storageApiVersion')]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "name": "[parameters('applicationDiagnosticsStorageAccountName')]",
+      "location": "[parameters('computeLocation')]",
+      "properties": {
+        "accountType": "[parameters('applicationDiagnosticsStorageAccountType')]"
       },
       "tags": {
         "resourceType": "Service Fabric",
@@ -400,6 +445,44 @@
               },
               "protocol": "tcp"
             }
+          },
+          {
+            "name": "AppPortLBRule3",
+            "properties": {
+              "backendAddressPool": {
+                "id": "[variables('lbPoolID0')]"
+              },
+              "backendPort": "[parameters('loadBalancedAppPort3')]",
+              "enableFloatingIP": "false",
+              "frontendIPConfiguration": {
+                "id": "[variables('lbIPConfig0')]"
+              },
+              "frontendPort": "[parameters('loadBalancedAppPort3')]",
+              "idleTimeoutInMinutes": "5",
+              "probe": {
+                "id": "[concat(variables('lbID0'),'/probes/AppPortProbe3')]"
+              },
+              "protocol": "tcp"
+            }
+          },
+          {
+            "name": "AppPortLBRule4",
+            "properties": {
+              "backendAddressPool": {
+                "id": "[variables('lbPoolID0')]"
+              },
+              "backendPort": "[parameters('loadBalancedAppPort4')]",
+              "enableFloatingIP": "false",
+              "frontendIPConfiguration": {
+                "id": "[variables('lbIPConfig0')]"
+              },
+              "frontendPort": "[parameters('loadBalancedAppPort4')]",
+              "idleTimeoutInMinutes": "5",
+              "probe": {
+                "id": "[concat(variables('lbID0'),'/probes/AppPortProbe4')]"
+              },
+              "protocol": "tcp"
+            }
           }
         ],
         "probes": [
@@ -438,6 +521,24 @@
               "port": "[parameters('loadBalancedAppPort2')]",
               "protocol": "tcp"
             }
+          },
+          {
+            "name": "AppPortProbe3",
+            "properties": {
+              "intervalInSeconds": 5,
+              "numberOfProbes": 2,
+              "port": "[parameters('loadBalancedAppPort3')]",
+              "protocol": "tcp"
+            }
+          },
+          {
+            "name": "AppPortProbe4",
+            "properties": {
+              "intervalInSeconds": 5,
+              "numberOfProbes": 2,
+              "port": "[parameters('loadBalancedAppPort4')]",
+              "protocol": "tcp"
+            }
           }
         ],
         "inboundNatPools": [
@@ -468,7 +569,8 @@
       "dependsOn": [
         "[concat('Microsoft.Storage/storageAccounts/', parameters('vmStorageAccountName'))]",
         "[concat('Microsoft.Network/virtualNetworks/', parameters('virtualNetworkName'))]",
-        "[concat('Microsoft.Storage/storageAccounts/', parameters('supportLogStorageAccountName'))]"
+        "[concat('Microsoft.Storage/storageAccounts/', parameters('supportLogStorageAccountName'))]",
+        "[concat('Microsoft.Storage/storageAccounts/', parameters('applicationDiagnosticsStorageAccountName'))]"
       ],
       "properties": {
         "overprovision": "[parameters('overProvision')]",
@@ -499,6 +601,58 @@
                     }
                   },
                   "typeHandlerVersion": "1.0"
+                }
+              },
+              {
+                "name": "[concat('VMDiagnosticsVmExt','_vmNodeType0Name')]",
+                "properties": {
+                  "type": "IaaSDiagnostics",
+                  "autoUpgradeMinorVersion": true,
+                  "protectedSettings": {
+                    "storageAccountName": "[parameters('applicationDiagnosticsStorageAccountName')]",
+                    "storageAccountKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('applicationDiagnosticsStorageAccountName')),'2015-05-01-preview').key1]",
+                    "storageAccountEndPoint": "https://core.windows.net/"
+                  },
+                  "publisher": "Microsoft.Azure.Diagnostics",
+                  "settings": {
+                    "WadCfg": {
+                      "DiagnosticMonitorConfiguration": {
+                        "overallQuotaInMB": "50000",
+                        "EtwProviders": {
+                          "EtwEventSourceProviderConfiguration": [
+                            {
+                              "provider": "Microsoft-ServiceFabric-Actors",
+                              "scheduledTransferKeywordFilter": "1",
+                              "scheduledTransferPeriod": "PT5M",
+                              "DefaultEvents": {
+                                "eventDestination": "ServiceFabricReliableActorEventTable"
+                              }
+                            },
+                            {
+                              "provider": "Microsoft-ServiceFabric-Services",
+                              "scheduledTransferPeriod": "PT5M",
+                              "DefaultEvents": {
+                                "eventDestination": "ServiceFabricReliableServiceEventTable"
+                              }
+                            }
+                          ],
+                          "EtwManifestProviderConfiguration": [
+                            {
+                              "provider": "cbd93bc2-71e5-4566-b3a7-595d8eeca6e8",
+                              "scheduledTransferLogLevelFilter": "Information",
+                              "scheduledTransferKeywordFilter": "4611686018427387904",
+                              "scheduledTransferPeriod": "PT5M",
+                              "DefaultEvents": {
+                                "eventDestination": "ServiceFabricSystemEventTable"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "StorageAccount": "[parameters('applicationDiagnosticsStorageAccountName')]"
+                  },
+                  "typeHandlerVersion": "1.5"
                 }
               }
             ]
@@ -593,16 +747,7 @@
           "x509StoreName": "[parameters('certificateStoreValue')]"
         },
         "clientCertificateCommonNames": [],
-        "clientCertificateThumbprints": [
-          {
-            "certificateThumbprint": "3F1094377281521BA88C160D2662A91804282F8E",
-            "isAdmin": true
-          },
-          {
-            "certificateThumbprint": "3F1094377281521BA88C160D2662A91804282F8E",
-            "isAdmin": false
-          }
-        ],
+        "clientCertificateThumbprints": [],
         "clusterState": "Default",
         "diagnosticsStorageAccountConfig": {
           "blobEndpoint": "[concat('https://',parameters('supportLogStorageAccountName'),'.blob.core.windows.net/')]",
